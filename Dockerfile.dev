@@ -1,0 +1,31 @@
+# -------- Build Stage --------
+FROM golang:1.26-alpine AS builder
+
+WORKDIR /app
+
+# Install git (needed for go mod sometimes)
+# RUN apk add --no-cache git
+
+# Cache dependencies
+COPY go.mod ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build binary
+RUN go build -o app ./cmd/server/main.go
+
+# -------- Run Stage --------
+FROM alpine:latest
+
+WORKDIR /root/
+
+# Copy binary from builder
+COPY --from=builder /app/app .
+
+# Expose port
+EXPOSE 8080
+
+# Run app
+CMD ["./app"]
