@@ -30,6 +30,8 @@ go.work.sum
 
 tmp/
 
+.DS_Store
+
 # Editor/IDE
 # .idea/
 # .vscode/
