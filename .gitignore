@@ -28,6 +28,8 @@ go.work.sum
 .env
 !.env.example
 
+tmp/
+
 # Editor/IDE
 # .idea/
 # .vscode/
