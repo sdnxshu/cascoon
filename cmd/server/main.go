@@ -10,9 +10,13 @@ import (
 	"time"
 
 	"github.com/sdnxshu/cascoon/internal/router"
+	"github.com/sdnxshu/cascoon/pkg/logger"
 )
 
 func main() {
+	logger.Init()
+	defer logger.Sync()
+
 	r := router.SetupRouter()
 
 	srv := &http.Server{
@@ -20,7 +24,6 @@ func main() {
 		Handler: r,
 	}
 
-	// Start server in goroutine
 	go func() {
 		log.Println("Server running on http://localhost:8080")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -28,17 +31,14 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutdown signal received...")
 
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Shutdown server gracefully
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatal("Server forced to shutdown:", err)
 	}
