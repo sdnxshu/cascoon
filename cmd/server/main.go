@@ -17,15 +17,20 @@ func main() {
 	logger.Init()
 	defer logger.Sync()
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	r := router.SetupRouter()
 
 	srv := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":" + port,
 		Handler: r,
 	}
 
 	go func() {
-		log.Println("Server running on http://localhost:8080")
+		log.Printf("Server running on http://localhost:%s", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %s\n", err)
 		}

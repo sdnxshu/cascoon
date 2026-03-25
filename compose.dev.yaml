@@ -7,14 +7,14 @@ services:
       dockerfile: Dockerfile.dev
     container_name: app
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:${PORT:-8080}"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
-      - PORT=8080
+      - PORT=${PORT:-8080}
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=postgres
