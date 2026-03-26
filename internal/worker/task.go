@@ -12,7 +12,7 @@ type Payload struct {
 	Repo string `json:"repo"`
 }
 
-func HandleWebhookTask(ctx context.Context, t *asynq.Task) error {
+func HandleTask(ctx context.Context, t *asynq.Task) error {
 	var p Payload
 
 	if err := json.Unmarshal(t.Payload(), &p); err != nil {

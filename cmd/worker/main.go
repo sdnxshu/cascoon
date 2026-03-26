@@ -4,7 +4,6 @@ import (
 	"log"
 
 	"github.com/hibiken/asynq"
-	// "github.com/sdnxshu/cascoon/internal/queue"
 	"github.com/sdnxshu/cascoon/internal/worker"
 )
 
@@ -15,7 +14,7 @@ func main() {
 	)
 
 	mux := asynq.NewServeMux()
-	mux.HandleFunc("run", worker.HandleWebhookTask)
+	mux.HandleFunc("run", worker.HandleTask)
 
 	if err := srv.Run(mux); err != nil {
 		log.Fatal(err)
