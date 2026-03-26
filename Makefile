@@ -46,6 +46,10 @@ docker-up:
 	@echo "🐳 Starting Docker Compose..."
 	docker compose up --build -d
 
+docker-up-scale-worker:
+	@echo "🐳 Starting Docker Compose with 3 workers..."
+	docker compose up --build -d --scale worker=3
+
 docker-down:
 	@echo "🐳 Stopping Docker Compose..."
 	docker compose down -v
