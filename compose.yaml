@@ -21,13 +21,13 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/postgres
       - REDIS_ADDR=redis:6379
     restart: unless-stopped
-    command: [ "go", "run", "cmd/api/main.go" ]
+    command: [ "./api" ]
     networks:
       - cascoon
 
   worker:
     build: .
-    container_name: worker
+    # container_name: worker
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,7 +44,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
-    command: [ "go", "run", "cmd/worker/main.go" ]
+    command: [ "./worker" ]
     networks:
       - cascoon
 
