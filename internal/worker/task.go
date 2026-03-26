@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 
+	git "github.com/go-git/go-git/v6"
 	"github.com/hibiken/asynq"
 
 	"github.com/docker/docker/api/types/container"
@@ -29,10 +29,20 @@ func RunInContainer(ctx context.Context, repoURL string, commands []string) erro
 	defer os.RemoveAll(repoDir)
 
 	fmt.Printf("Cloning %s into %s\n", repoURL, repoDir)
-	cmd := exec.CommandContext(ctx, "git", "clone", "--depth=1", repoURL, repoDir)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	// cmd := exec.CommandContext(ctx, "git", "clone", "--depth=1", repoURL, repoDir)
+	// cmd.Stdout = os.Stdout
+	// cmd.Stderr = os.Stderr
+	// if err := cmd.Run(); err != nil {
+	// return fmt.Errorf("git clone: %w", err)
+	// }
+
+	_, err = git.PlainClone(repoDir, &git.CloneOptions{
+		URL:      repoURL,
+		Bare:     false,
+		Depth:    1,
+		Progress: nil,
+	})
+	if err != nil {
 		return fmt.Errorf("git clone: %w", err)
 	}
 
