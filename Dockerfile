@@ -18,6 +18,8 @@ FROM alpine:latest
 
 WORKDIR /root/
 
+RUN apk add --no-cache git
+
 COPY --from=builder /app/api .
 COPY --from=builder /app/worker .
 
