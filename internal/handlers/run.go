@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -101,34 +102,28 @@ func RunHandler(c *gin.Context) {
 		return
 	}
 
+	if body.Repo == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "repo is required"})
+		return
+	}
+
 	dir := ".jennings/workflows"
 
 	workflows, err := LoadWorkflows(dir)
 	if err != nil {
-		panic(err)
+		log.Printf("ERROR: failed to load workflows from %s: %v", dir, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load workflows"})
+		return
 	}
 
+	if len(workflows) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No workflows found in " + dir})
+		return
+	}
+
+	// Log loaded workflows (dev-friendly summary)
 	for _, wf := range workflows {
-		fmt.Println("=================================")
-		fmt.Println("Name:", wf.Name)
-		fmt.Println("Image:", wf.Image)
-
-		fmt.Println("\nSteps:")
-		for _, step := range wf.Steps {
-			fmt.Printf("- %s: %s\n", step.Name, step.Run)
-
-			if len(step.Env) > 0 {
-				fmt.Println("  Env:", step.Env)
-			}
-
-			if step.Timeout != "" {
-				fmt.Println("  Timeout:", step.Timeout)
-			}
-
-			if len(step.Extras) > 0 {
-				fmt.Println("  Extras:", step.Extras)
-			}
-		}
+		log.Printf("Loaded workflow: %s (%d steps, image: %s)", wf.Name, len(wf.Steps), wf.Image)
 	}
 
 	client := queue.NewClient()
@@ -136,12 +131,18 @@ func RunHandler(c *gin.Context) {
 
 	task := queue.NewTask(body.Repo)
 
-	if _, err := client.Enqueue(task); err != nil {
+	info, err := client.Enqueue(task)
+	if err != nil {
+		log.Printf("ERROR: failed to enqueue task for repo %s: %v", body.Repo, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to enqueue task"})
 		return
 	}
 
+	log.Printf("Enqueued task %s for repo: %s", info.ID, body.Repo)
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Queued successfully 🚀",
+		"task_id": info.ID,
+		"repo":    body.Repo,
 	})
 }
