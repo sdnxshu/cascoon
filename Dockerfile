@@ -21,4 +21,6 @@ WORKDIR /root/
 COPY --from=builder /app/api .
 COPY --from=builder /app/worker .
 
+COPY .jennings .jennings
+
 EXPOSE 8080
