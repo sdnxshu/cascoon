@@ -1,3 +1,4 @@
+// pkg/response/response.go
 package response
 
 import (

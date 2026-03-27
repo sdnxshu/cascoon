@@ -1,3 +1,4 @@
+// internal/queue/client.go
 package queue
 
 import (
