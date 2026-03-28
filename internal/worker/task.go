@@ -2,6 +2,7 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,10 +17,13 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
+	"github.com/sdnxshu/cascoon/internal/store"
+	"github.com/sdnxshu/cascoon/pkg/db"
 )
 
-func RunInContainer(ctx context.Context, repoURL string, commands []string) error {
+func RunInContainer(ctx context.Context, runID, repoURL string, workflowName, dockerImage string, commands []string) error {
+	s := store.NewRunStore(db.DB)
+
 	repoDir, err := os.MkdirTemp("", "repo-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
@@ -27,12 +31,10 @@ func RunInContainer(ctx context.Context, repoURL string, commands []string) erro
 	defer os.RemoveAll(repoDir)
 
 	fmt.Printf("Cloning %s into %s\n", repoURL, repoDir)
-
 	_, err = git.PlainClone(repoDir, &git.CloneOptions{
-		URL:      repoURL,
-		Bare:     false,
-		Depth:    1,
-		Progress: nil,
+		URL:   repoURL,
+		Bare:  false,
+		Depth: 1,
 	})
 	if err != nil {
 		return fmt.Errorf("git clone: %w", err)
@@ -49,7 +51,6 @@ func RunInContainer(ctx context.Context, repoURL string, commands []string) erro
 	}
 	defer cli.Close()
 
-	const dockerImage = "oven/bun:alpine"
 	fmt.Printf("Pulling image %s\n", dockerImage)
 	reader, err := cli.ImagePull(ctx, dockerImage, image.PullOptions{})
 	if err != nil {
@@ -63,9 +64,6 @@ func RunInContainer(ctx context.Context, repoURL string, commands []string) erro
 			Image:      dockerImage,
 			WorkingDir: "/workspace",
 			Cmd:        []string{"sleep", "infinity"},
-			ExposedPorts: nat.PortSet{
-				"3000/tcp": struct{}{},
-			},
 		},
 		&container.HostConfig{
 			Mounts: []mount.Mount{
@@ -74,9 +72,6 @@ func RunInContainer(ctx context.Context, repoURL string, commands []string) erro
 					Source: absRepoDir,
 					Target: "/workspace",
 				},
-			},
-			PortBindings: nat.PortMap{
-				"3000/tcp": []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: "3000"}},
 			},
 		},
 		nil, nil, "",
@@ -90,13 +85,20 @@ func RunInContainer(ctx context.Context, repoURL string, commands []string) erro
 		fmt.Println("Removing container...")
 		cli.ContainerRemove(context.Background(), containerID, container.RemoveOptions{Force: true})
 	}()
+
 	if err := cli.ContainerStart(ctx, containerID, container.StartOptions{}); err != nil {
 		return fmt.Errorf("container start: %w", err)
 	}
 	fmt.Printf("Container %s started\n", containerID[:12])
 
+	// Run each step, capture output, save to DB
 	for _, command := range commands {
-		if err := execInContainer(ctx, cli, containerID, command); err != nil {
+		output, exitCode, err := execInContainer(ctx, cli, containerID, command)
+
+		// Always save the log, even on failure
+		_ = s.InsertLog(runID, workflowName, command, output, exitCode)
+
+		if err != nil {
 			return fmt.Errorf("exec %q: %w", command, err)
 		}
 	}
@@ -104,7 +106,8 @@ func RunInContainer(ctx context.Context, repoURL string, commands []string) erro
 	return nil
 }
 
-func execInContainer(ctx context.Context, cli *client.Client, containerID, command string) error {
+// execInContainer runs a command and returns (output, exitCode, error)
+func execInContainer(ctx context.Context, cli *client.Client, containerID, command string) (string, int, error) {
 	fmt.Printf("\n--- Running: %s ---\n", command)
 
 	execID, err := cli.ContainerExecCreate(ctx, containerID, container.ExecOptions{
@@ -114,54 +117,68 @@ func execInContainer(ctx context.Context, cli *client.Client, containerID, comma
 		WorkingDir:   "/workspace",
 	})
 	if err != nil {
-		return fmt.Errorf("exec create: %w", err)
+		return "", -1, fmt.Errorf("exec create: %w", err)
 	}
 
 	attach, err := cli.ContainerExecAttach(ctx, execID.ID, container.ExecStartOptions{})
 	if err != nil {
-		return fmt.Errorf("exec attach: %w", err)
+		return "", -1, fmt.Errorf("exec attach: %w", err)
 	}
 	defer attach.Close()
 
-	if _, err := io.Copy(os.Stdout, attach.Reader); err != nil && err != io.EOF {
-		return fmt.Errorf("stream output: %w", err)
-	}
-	inspect, err := cli.ContainerExecInspect(ctx, execID.ID)
-	if err != nil {
-		return fmt.Errorf("exec inspect: %w", err)
-	}
-	if inspect.ExitCode != 0 {
-		return fmt.Errorf("exited with code %d", inspect.ExitCode)
+	// Capture output AND stream to stdout
+	var buf bytes.Buffer
+	w := io.MultiWriter(os.Stdout, &buf)
+	if _, err := io.Copy(w, attach.Reader); err != nil && err != io.EOF {
+		return "", -1, fmt.Errorf("stream output: %w", err)
 	}
 
-	return nil
+	inspect, err := cli.ContainerExecInspect(ctx, execID.ID)
+	if err != nil {
+		return buf.String(), -1, fmt.Errorf("exec inspect: %w", err)
+	}
+
+	if inspect.ExitCode != 0 {
+		return buf.String(), inspect.ExitCode, fmt.Errorf("exited with code %d", inspect.ExitCode)
+	}
+
+	return buf.String(), 0, nil
 }
 
 type Payload struct {
-	Repo string `json:"repo"`
+	RunID string `json:"run_id"`
+	Repo  string `json:"repo"`
 }
 
 func HandleTask(ctx context.Context, t *asynq.Task) error {
 	var p Payload
-
 	if err := json.Unmarshal(t.Payload(), &p); err != nil {
 		return err
 	}
 
-	fmt.Println("Processing repo:", p.Repo)
+	fmt.Println("Processing repo:", p.Repo, "run:", p.RunID)
 
+	s := store.NewRunStore(db.DB)
+	_ = s.UpdateStatus(p.RunID, "running")
+
+	// TODO: replace with workflow YAML loading from repo
+	// For now runs a single default workflow
 	err := RunInContainer(
-		context.Background(),
+		ctx,
+		p.RunID,
 		p.Repo,
+		"default",
+		"oven/bun:alpine",
 		[]string{
 			"bun install",
-			"bun run dev",
+			"bun run build",
 		},
 	)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		_ = s.UpdateStatus(p.RunID, "failed")
+		return err // let asynq handle retries, don't os.Exit
 	}
 
+	_ = s.UpdateStatus(p.RunID, "success")
 	return nil
 }

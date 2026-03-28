@@ -5,12 +5,18 @@ import (
 	"log"
 
 	"github.com/hibiken/asynq"
+	"github.com/sdnxshu/cascoon/internal/queue"
 	"github.com/sdnxshu/cascoon/internal/worker"
+	"github.com/sdnxshu/cascoon/pkg/db"
 )
 
 func main() {
+	if err := db.Init(); err != nil {
+		log.Fatalf("db init: %v", err)
+	}
+
 	srv := asynq.NewServer(
-		asynq.RedisClientOpt{Addr: "redis:6379"},
+		queue.RedisOpt(),
 		asynq.Config{Concurrency: 10},
 	)
 

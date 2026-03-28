@@ -12,19 +12,22 @@ import (
 func SetupRouter() *gin.Engine {
 	r := gin.New()
 
-	// Middleware
 	r.Use(gin.Recovery())
 	r.Use(middleware.LoggerMiddleware())
-	r.Use(middleware.TimeoutMiddleware(3 * time.Second))
 
-	// Routes
 	r.GET("/", handlers.RootHandler)
-
 	r.GET("/health", handlers.HealthHandler)
 
-	r.POST("/run", handlers.RunHandler)
-	r.GET("/runs", handlers.RunHandler)
-	r.GET("/runs/:id", handlers.RunHandler)
+	// /run has its own longer timeout since it hits Redis
+	run := r.Group("/")
+	run.Use(middleware.TimeoutMiddleware(5 * time.Second))
+	run.POST("/run", handlers.RunHandler)
+
+	// Runs - no tight timeout needed, just DB reads
+	runs := r.Group("/runs")
+	runs.Use(middleware.TimeoutMiddleware(10 * time.Second))
+	runs.GET("", handlers.ListRunsHandler)
+	runs.GET("/:id", handlers.GetRunHandler)
 
 	return r
 }
