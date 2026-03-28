@@ -12,26 +12,24 @@ import (
 
 	"github.com/sdnxshu/cascoon/internal/router"
 	"github.com/sdnxshu/cascoon/pkg/logger"
+	"github.com/sdnxshu/cascoon/internal/config"
 )
 
 func main() {
 	logger.Init()
 	defer logger.Sync()
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	cfg := config.Load()
 
 	r := router.SetupRouter()
 
 	srv := &http.Server{
-		Addr:    ":" + port,
+		Addr:    ":" + cfg.Port,
 		Handler: r,
 	}
 
 	go func() {
-		log.Printf("Server running on http://localhost:%s", port)
+		log.Printf("Server running on http://localhost:%s", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %s\n", err)
 		}

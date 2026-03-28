@@ -19,8 +19,12 @@ func SetupRouter() *gin.Engine {
 
 	// Routes
 	r.GET("/", handlers.RootHandler)
-	r.POST("/run", handlers.RunHandler)
+
 	r.GET("/health", handlers.HealthHandler)
+
+	r.POST("/run", handlers.RunHandler)
+	r.GET("/runs", handlers.RunHandler)
+	r.GET("/runs/:id", handlers.RunHandler)
 
 	return r
 }
